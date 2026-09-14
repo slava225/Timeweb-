@@ -96,7 +96,7 @@ probe_replacement = r'''  String _configKind(String config) {
 
 '''
 
-s, n = re.subn(probe_pattern, probe_replacement, s, flags=re.S)
+s, n = re.subn(probe_pattern, lambda _m: probe_replacement, s, flags=re.S)
 if n != 1:
     raise SystemExit(f'probe/find replacement count={n}')
 
@@ -203,7 +203,7 @@ func_replacement = r'''    fun getServerDelay(context: Context, configJson: Stri
 
     private fun drain'''
 
-cs, n = re.subn(func_pattern, func_replacement, cs, flags=re.S)
+cs, n = re.subn(func_pattern, lambda _m: func_replacement, cs, flags=re.S)
 if n != 1:
     raise SystemExit(f'getServerDelay replacement count={n}')
 core.write_text(cs)
