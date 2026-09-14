@@ -29,7 +29,9 @@ jobs:
           cp /tmp/vdc2src/main.dart buildapp/lib/main.dart
 
       - name: Patch app for ASK-VPN probing
-        run: python3 tools/patch_vdc201.py
+        run: |
+          python3 tools/patch_vdc201.py
+          python3 tools/patch_vdc203.py
 
       - name: Use latest flutter_vless Android runtime
         run: |
@@ -91,18 +93,18 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: VPNDeviceChecker-2.0.2-debug
+          name: VPNDeviceChecker-2.0.3-debug
           path: buildapp/build/app/outputs/flutter-apk/app-debug.apk
 
       - name: Publish GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          cp buildapp/build/app/outputs/flutter-apk/app-debug.apk VPNDeviceChecker-2.0.2-ASKVPN-happ-fix.apk
-          if gh release view v2.0.2 >/dev/null 2>&1; then
-            gh release upload v2.0.2 VPNDeviceChecker-2.0.2-ASKVPN-happ-fix.apk --clobber
+          cp buildapp/build/app/outputs/flutter-apk/app-debug.apk VPNDeviceChecker-2.0.3-ASKVPN-json-fix.apk
+          if gh release view v2.0.3 >/dev/null 2>&1; then
+            gh release upload v2.0.3 VPNDeviceChecker-2.0.3-ASKVPN-json-fix.apk --clobber
           else
-            gh release create v2.0.2 VPNDeviceChecker-2.0.2-ASKVPN-happ-fix.apk \
-              --title "VPN Device Checker 2.0.2" \
-              --notes "ASK-VPN compatibility update. Real test now requests subscription variants as Happ Android and v2RayTun with a stable test x-hwid, then falls back to a generic subscription response. Safe check remains HWID-free. Uses current flutter_vless/Xray runtime and multiple probe endpoints."
+            gh release create v2.0.3 VPNDeviceChecker-2.0.3-ASKVPN-json-fix.apk \
+              --title "VPN Device Checker 2.0.3" \
+              --notes "ASK-VPN/Xray compatibility update. Real test now tries explicit /json and /v2ray-json subscription variants before share links, uses Happ/1.0 identity, and imports responses with FlutterVless.parseMany so raw Xray JSON keeps server-provided VLESS Encryption/XHTTP fields. Safe check remains HWID-free."
           fi
