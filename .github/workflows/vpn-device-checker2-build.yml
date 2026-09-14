@@ -1,4 +1,8 @@
 name: Build VPN Device Checker 2 APK
+
+permissions:
+  contents: write
+
 on:
   push:
     branches: [ main ]
@@ -49,3 +53,15 @@ jobs:
         with:
           name: VPNDeviceChecker2-debug
           path: buildapp/build/app/outputs/flutter-apk/app-debug.apk
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cp buildapp/build/app/outputs/flutter-apk/app-debug.apk VPNDeviceChecker-2.0.0-ASKVPN-real-test.apk
+          if gh release view v2.0.0 >/dev/null 2>&1; then
+            gh release upload v2.0.0 VPNDeviceChecker-2.0.0-ASKVPN-real-test.apk --clobber
+          else
+            gh release create v2.0.0 VPNDeviceChecker-2.0.0-ASKVPN-real-test.apk \
+              --title "VPN Device Checker 2.0" \
+              --notes "Android APK for checking VPN subscription metadata and testing multiple concurrent Xray/VLESS connections. Includes ASK-VPN real concurrent connection test. Debug-signed build."
+          fi
