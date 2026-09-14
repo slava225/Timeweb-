@@ -54,7 +54,7 @@ jobs:
           path_dep('packages/flutter_vless_windows/pubspec.yaml', 'flutter_vless_platform_interface', '../flutter_vless_platform_interface')
           vendor = Path('buildapp/vendor/flutter_vless')
           vendor.parent.mkdir(parents=True, exist_ok=True)
-          shutil.copytree(root, vendor)
+          shutil.copytree(root, vendor, symlinks=True, ignore=shutil.ignore_patterns('.git', 'build', '.dart_tool'))
           pub = Path('buildapp/pubspec.yaml')
           s = pub.read_text()
           s, n = re.subn(r'(?m)^  flutter_vless:\s*\^?[^\n]+$', '  flutter_vless:\n    path: vendor/flutter_vless', s)
