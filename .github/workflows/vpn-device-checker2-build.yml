@@ -1,0 +1,50 @@
+name: Build VPN Device Checker 2 APK
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - name: Create Flutter Android shell
+        run: |
+          rm -rf buildapp
+          flutter create --platforms=android --org com.svyatoslav --project-name vpn_device_checker buildapp
+          mkdir -p /tmp/vdc2src
+          tar -xzf vdc2src.tgz -C /tmp/vdc2src
+          cp /tmp/vdc2src/pubspec.yaml buildapp/pubspec.yaml
+          cp /tmp/vdc2src/main.dart buildapp/lib/main.dart
+      - name: Add Internet permission
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('buildapp/android/app/src/main/AndroidManifest.xml')
+          s=p.read_text()
+          if 'android.permission.INTERNET' not in s:
+              s=s.replace('<manifest xmlns:android="http://schemas.android.com/apk/res/android">', '<manifest xmlns:android="http://schemas.android.com/apk/res/android">\n    <uses-permission android:name="android.permission.INTERNET" />')
+          p.write_text(s)
+          PY
+      - name: Resolve dependencies
+        working-directory: buildapp
+        run: flutter pub get
+      - name: Enable true concurrent Xray probes
+        run: |
+          PLUGIN=$(find "$HOME/.pub-cache" -type f -path '*flutter_vless_android*/android/src/main/kotlin/com/github/tfox/flutter_vless/FlutterVlessPlugin.kt' | head -n 1)
+          echo "Plugin source: $PLUGIN"
+          test -n "$PLUGIN"
+          sed -i 's/Executors.newSingleThreadExecutor()/Executors.newFixedThreadPool(12)/' "$PLUGIN"
+          grep -n 'newFixedThreadPool' "$PLUGIN"
+      - name: Build APK
+        working-directory: buildapp
+        run: flutter build apk --debug
+      - uses: actions/upload-artifact@v4
+        with:
+          name: VPNDeviceChecker2-debug
+          path: buildapp/build/app/outputs/flutter-apk/app-debug.apk
