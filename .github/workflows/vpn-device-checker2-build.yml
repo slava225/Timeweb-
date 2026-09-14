@@ -26,6 +26,12 @@ jobs:
           tar -xzf /tmp/vdc2src.tgz -C /tmp/vdc2src
           cp /tmp/vdc2src/pubspec.yaml buildapp/pubspec.yaml
           cp /tmp/vdc2src/main.dart buildapp/lib/main.dart
+      - name: Diagnostic source dump
+        run: |
+          echo '===== MAIN.DART ====='
+          cat buildapp/lib/main.dart
+          echo '===== PUBSPEC ====='
+          cat buildapp/pubspec.yaml
       - name: Add Internet permission
         run: |
           python3 - <<'PY'
