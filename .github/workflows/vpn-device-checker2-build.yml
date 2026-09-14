@@ -65,6 +65,9 @@ jobs:
           pub.write_text(s)
           PY
 
+      - name: Add native Xray diagnostics
+        run: python3 tools/patch_vdc204.py
+
       - name: Add Internet permission
         run: |
           python3 - <<'PY'
@@ -93,18 +96,18 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: VPNDeviceChecker-2.0.3-debug
+          name: VPNDeviceChecker-2.0.4-debug
           path: buildapp/build/app/outputs/flutter-apk/app-debug.apk
 
       - name: Publish GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          cp buildapp/build/app/outputs/flutter-apk/app-debug.apk VPNDeviceChecker-2.0.3-ASKVPN-json-fix.apk
-          if gh release view v2.0.3 >/dev/null 2>&1; then
-            gh release upload v2.0.3 VPNDeviceChecker-2.0.3-ASKVPN-json-fix.apk --clobber
+          cp buildapp/build/app/outputs/flutter-apk/app-debug.apk VPNDeviceChecker-2.0.4-ASKVPN-xray-diagnostics.apk
+          if gh release view v2.0.4 >/dev/null 2>&1; then
+            gh release upload v2.0.4 VPNDeviceChecker-2.0.4-ASKVPN-xray-diagnostics.apk --clobber
           else
-            gh release create v2.0.3 VPNDeviceChecker-2.0.3-ASKVPN-json-fix.apk \
-              --title "VPN Device Checker 2.0.3" \
-              --notes "ASK-VPN/Xray compatibility update. Real test now tries explicit /json and /v2ray-json subscription variants before share links, uses Happ/1.0 identity, and imports responses with FlutterVless.parseMany so raw Xray JSON keeps server-provided VLESS Encryption/XHTTP fields. Safe check remains HWID-free."
+            gh release create v2.0.4 VPNDeviceChecker-2.0.4-ASKVPN-xray-diagnostics.apk \
+              --title "VPN Device Checker 2.0.4" \
+              --notes "Diagnostic build for ASK-VPN/Xray. Replaces opaque delay=-1 failures with the actual sanitized Xray startup/probe error and adds profile type hints (protocol/transport/security/flow). Subscription keys and UUIDs are redacted from native diagnostics."
           fi
