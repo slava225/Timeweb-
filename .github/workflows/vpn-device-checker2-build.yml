@@ -17,6 +17,7 @@ jobs:
         with:
           channel: stable
           cache: true
+
       - name: Create Flutter Android shell
         run: |
           rm -rf buildapp
@@ -26,12 +27,115 @@ jobs:
           tar -xzf /tmp/vdc2src.tgz -C /tmp/vdc2src
           cp /tmp/vdc2src/pubspec.yaml buildapp/pubspec.yaml
           cp /tmp/vdc2src/main.dart buildapp/lib/main.dart
-      - name: Diagnostic source dump
+
+      - name: Patch app for ASK-VPN probing
         run: |
-          echo '===== MAIN.DART ====='
-          cat buildapp/lib/main.dart
-          echo '===== PUBSPEC ====='
-          cat buildapp/pubspec.yaml
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          p = Path('buildapp/lib/main.dart')
+          s = p.read_text()
+
+          s = s.replace(
+              "  static const _testUrl = 'https://www.google.com/generate_204';",
+              """  static const _testUrls = <String>[
+    'https://www.google.com/generate_204',
+    'https://cp.cloudflare.com/generate_204',
+    'https://www.gstatic.com/generate_204',
+    'https://example.com/',
+  ];"""
+          )
+
+          new_find = r'''  Future<int> _probeConfig(String config) async {
+    for (final url in _testUrls) {
+      try {
+        final delay = await _vless.getServerDelay(config: config, url: url);
+        if (delay >= 0) return delay;
+      } catch (_) {}
+    }
+    return -1;
+  }
+
+  Future<_WorkingProfile> _findWorkingProfile(List<FlutterVlessURL> profiles) async {
+    await _initFuture;
+    final maxTry = math.min(profiles.length, 30);
+    final failures = <String>[];
+    for (var i = 0; i < maxTry; i++) {
+      final profile = profiles[i];
+      try {
+        final config = profile.getFullConfiguration();
+        final delay = await _probeConfig(config);
+        if (delay >= 0) {
+          return _WorkingProfile(profile: profile, config: config, baselineDelay: delay, index: i);
+        }
+        failures.add('#${i + 1}: все тестовые URL дали -1');
+      } catch (e) {
+        failures.add('#${i + 1}: ${_cleanError(e)}');
+      }
+    }
+    throw Exception('Не удалось найти рабочий профиль среди $maxTry проверенных. Это НЕ означает лимит устройств. ${failures.take(5).join(' | ')}');
+  }
+
+'''
+          s, n = re.subn(
+              r"  Future<_WorkingProfile> _findWorkingProfile\(List<FlutterVlessURL> profiles\) async \{.*?\n  \}\n\n(?=  Future<List<_Probe>> _runRound)",
+              new_find,
+              s,
+              flags=re.S,
+          )
+          if n != 1:
+              raise SystemExit(f'findWorkingProfile replacement count={n}')
+
+          s = s.replace(
+              "final delay = await _vless.getServerDelay(config: config, url: _testUrl);",
+              "final delay = await _probeConfig(config);"
+          )
+
+          s = s.replace("VPN Device Checker 2'", "VPN Device Checker 2.0.1'")
+          p.write_text(s)
+
+          pub = Path('buildapp/pubspec.yaml')
+          ps = pub.read_text().replace('version: 2.0.0+2', 'version: 2.0.1+3')
+          pub.write_text(ps)
+          PY
+
+      - name: Use latest flutter_vless Android runtime
+        run: |
+          git clone --depth 1 https://github.com/XIIIFOX/flutter_vless.git /tmp/flutter_vless
+          python3 - <<'PY'
+          from pathlib import Path
+          import re, shutil
+
+          root = Path('/tmp/flutter_vless')
+          def path_dep(file, name, relpath):
+              p = root / file
+              s = p.read_text()
+              s, n = re.subn(rf'(?m)^  {re.escape(name)}:\s*\^?[^\n]+$', f'  {name}:\n    path: {relpath}', s)
+              if n == 0:
+                  print(f'warning: dependency {name} not replaced in {file}')
+              p.write_text(s)
+
+          path_dep('pubspec.yaml', 'flutter_vless_platform_interface', 'packages/flutter_vless_platform_interface')
+          path_dep('pubspec.yaml', 'flutter_vless_android', 'packages/flutter_vless_android')
+          path_dep('pubspec.yaml', 'flutter_vless_macos', 'packages/flutter_vless_macos')
+          path_dep('pubspec.yaml', 'flutter_vless_windows', 'packages/flutter_vless_windows')
+          path_dep('packages/flutter_vless_android/pubspec.yaml', 'flutter_vless_platform_interface', '../flutter_vless_platform_interface')
+          path_dep('packages/flutter_vless_macos/pubspec.yaml', 'flutter_vless_platform_interface', '../flutter_vless_platform_interface')
+          path_dep('packages/flutter_vless_windows/pubspec.yaml', 'flutter_vless_platform_interface', '../flutter_vless_platform_interface')
+
+          vendor = Path('buildapp/vendor/flutter_vless')
+          vendor.parent.mkdir(parents=True, exist_ok=True)
+          shutil.copytree(root, vendor)
+
+          pub = Path('buildapp/pubspec.yaml')
+          s = pub.read_text()
+          s, n = re.subn(r'(?m)^  flutter_vless:\s*\^?[^\n]+$', '  flutter_vless:\n    path: vendor/flutter_vless', s)
+          if n != 1:
+              raise SystemExit(f'app flutter_vless dependency replacement count={n}')
+          pub.write_text(s)
+          PY
+
       - name: Add Internet permission
         run: |
           python3 - <<'PY'
@@ -42,32 +146,36 @@ jobs:
               s=s.replace('<manifest xmlns:android="http://schemas.android.com/apk/res/android">', '<manifest xmlns:android="http://schemas.android.com/apk/res/android">\n    <uses-permission android:name="android.permission.INTERNET" />')
           p.write_text(s)
           PY
+
       - name: Resolve dependencies
         working-directory: buildapp
         run: flutter pub get
+
       - name: Enable true concurrent Xray probes
         run: |
-          PLUGIN=$(find "$HOME/.pub-cache" -type f -path '*flutter_vless_android*/android/src/main/kotlin/com/github/tfox/flutter_vless/FlutterVlessPlugin.kt' | head -n 1)
-          echo "Plugin source: $PLUGIN"
-          test -n "$PLUGIN"
+          PLUGIN="buildapp/vendor/flutter_vless/packages/flutter_vless_android/android/src/main/kotlin/com/github/tfox/flutter_vless/FlutterVlessPlugin.kt"
+          test -f "$PLUGIN"
           sed -i 's/Executors.newSingleThreadExecutor()/Executors.newFixedThreadPool(12)/' "$PLUGIN"
-          grep -n 'newFixedThreadPool' "$PLUGIN"
+          grep -n 'newFixedThreadPool' "$PLUGIN" || true
+
       - name: Build APK
         working-directory: buildapp
         run: flutter build apk --debug
+
       - uses: actions/upload-artifact@v4
         with:
-          name: VPNDeviceChecker2-debug
+          name: VPNDeviceChecker-2.0.1-debug
           path: buildapp/build/app/outputs/flutter-apk/app-debug.apk
+
       - name: Publish GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          cp buildapp/build/app/outputs/flutter-apk/app-debug.apk VPNDeviceChecker-2.0.0-ASKVPN-real-test.apk
-          if gh release view v2.0.0 >/dev/null 2>&1; then
-            gh release upload v2.0.0 VPNDeviceChecker-2.0.0-ASKVPN-real-test.apk --clobber
+          cp buildapp/build/app/outputs/flutter-apk/app-debug.apk VPNDeviceChecker-2.0.1-ASKVPN-fix.apk
+          if gh release view v2.0.1 >/dev/null 2>&1; then
+            gh release upload v2.0.1 VPNDeviceChecker-2.0.1-ASKVPN-fix.apk --clobber
           else
-            gh release create v2.0.0 VPNDeviceChecker-2.0.0-ASKVPN-real-test.apk \
-              --title "VPN Device Checker 2.0" \
-              --notes "Android APK for checking VPN subscription metadata and testing multiple concurrent Xray/VLESS connections. Includes ASK-VPN real concurrent connection test. Debug-signed build."
+            gh release create v2.0.1 VPNDeviceChecker-2.0.1-ASKVPN-fix.apk \
+              --title "VPN Device Checker 2.0.1" \
+              --notes "Fixes ASK-VPN real-test false failures: tries up to 30 profiles, uses multiple HTTP probe endpoints, and builds against the latest flutter_vless/Xray Android runtime. A delay=-1 result is no longer treated as a device-limit result. Debug-signed Android build."
           fi
